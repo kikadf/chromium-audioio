@@ -58,12 +58,9 @@ class AudioIOAudioInputStream : public AgcAudioStream<AudioInputStream> {
 
   // C-style call-backs
   static void* ThreadEntry(void *arg);
-  static void* ThreadPosEntry(void *arg);
 
   // Continuously moves data from the device to the consumer
   void ThreadLoop();
-  // Continuously check position
-  void ThreadLoopPos(void);
   // Our creator, the audio manager needs to be notified when we close.
   AudioManagerBase* manager;
   // Parameters of the source
@@ -78,12 +75,6 @@ class AudioIOAudioInputStream : public AgcAudioStream<AudioInputStream> {
   enum StreamState state;
   // High priority thread running ThreadLoop()
   pthread_t thread;
-  // High priority thread running ThreadLoopPos()
-  pthread_t threadpos;
-  // Protects vol, volpending and hw_delay
-  pthread_mutex_t mutex;
-  // Number of frames buffered in the hardware
-  int hw_delay;
   // Temporary buffer
   char* buffer;
 };

@@ -1,5 +1,4 @@
 #include <fcntl.h>
-#include <poll.h>
 #include <sys/ioctl.h>
 
 #include "base/logging.h"
@@ -16,13 +15,6 @@ void *AudioIOAudioInputStream::ThreadEntry(void *arg) {
   AudioIOAudioInputStream* self = static_cast<AudioIOAudioInputStream*>(arg);
 
   self->ThreadLoop();
-  return NULL;
-}
-
-void *AudioIOAudioInputStream::ThreadPosEntry(void *arg) {
-  AudioIOAudioInputStream* self = static_cast<AudioIOAudioInputStream*>(arg);
-
-  self->ThreadLoopPos();
   return NULL;
 }
 
@@ -52,7 +44,7 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
 
   if (params.format() != AudioParameters::AUDIO_PCM_LINEAR &&
       params.format() != AudioParameters::AUDIO_PCM_LOW_LATENCY) {
-    LOG(WARNING) << "[AUDIOIO] Unsupported audio format.";
+    LOG(WARNING) << "[AUDIOIO] Input: Unsupported audio format.";
     return OpenOutcome::kFailed;
   }
 
@@ -61,11 +53,11 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   info.record.sample_rate = params.sample_rate();
   info.record.channels = params.channels();
   info.record.precision = SampleFormatToBitsPerChannel(kSampleFormat);
-  info.record.encoding = AUDIO_ENCODING_SLINEAR;
+  info.record.encoding = AUDIO_ENCODING_SLINEAR_LE;
   info.record.pause = true;
 
   if ((fd = open("/dev/audio", O_RDONLY)) < 0) {
-    LOG(ERROR) << "[AUDIOIO] Couldn't open audio device.";
+    LOG(ERROR) << "[AUDIOIO] Input: Couldn't open audio device.";
     return OpenOutcome::kFailed;
   }
 
@@ -83,7 +75,7 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   return OpenOutcome::kSuccess;
 error:
   close(fd);
-  LOG(ERROR) << "[AUDIOIO] Couldn't set audio parameters.";
+  LOG(ERROR) << "[AUDIOIO] Input: Couldn't set audio parameters.";
   return OpenOutcome::kFailed;
 }
 
@@ -104,7 +96,6 @@ void AudioIOAudioInputStream::Start(AudioInputCallback* cb) {
   }
 
   state = kRunning;
-  hw_delay = 0;
   callback = cb;
 
   if (pthread_create(&thread, NULL, &ThreadEntry, this) != 0) {
@@ -112,15 +103,10 @@ void AudioIOAudioInputStream::Start(AudioInputCallback* cb) {
     goto error;
   }
 
-  if (pthread_create(&threadpos, NULL, &ThreadPosEntry, this) != 0) {
-    LOG(ERROR) << "[AUDIOIO] Failed to create real-time threadpos for recording.";
-    goto error;
-  }
-
   LOG(INFO) << "[AUDIOIO] Recording started.";
   return;
 error:
-  LOG(ERROR) << "[AUDIOIO] Failed to start playing audio.";
+  LOG(ERROR) << "[AUDIOIO] Failed to start recording audio.";
   state = kStopped;
 }
 
@@ -133,9 +119,8 @@ void AudioIOAudioInputStream::Stop() {
   if (state == kStopped) {
     return;
   }
-  state = kRunning;
+  state = kStopWait;
   pthread_join(thread, NULL);
-  pthread_join(threadpos, NULL);
   (void)ioctl(fd, AUDIO_FLUSH, NULL);
   if (ioctl(fd, AUDIO_GETINFO, &info) < 0) {
     goto error;
@@ -205,67 +190,52 @@ void AudioIOAudioInputStream::SetOutputDeviceForAec(
 }
 
 void AudioIOAudioInputStream::ThreadLoop(void) {
-  size_t todo, n;
-  char *data;
-  unsigned int nframes;
+  size_t bytes, n, frames, move, count;
+  size_t framesize = params.GetBytesPerFrame(kSampleFormat);
+  size_t read_bytes = 0;
+  size_t hw_delay = 0;
   double normalized_volume = 0.0;
+  char *data;
+  struct audio_offset offset;
 
-  nframes = audio_bus->frames();
   LOG(INFO) << "[AUDIOIO] Input:ThreadLoop() started.";
 
   while (state == kRunning) {
 
     GetAgcVolume(&normalized_volume);
+    count = audio_bus->frames();
 
-    // read one block
-    todo = nframes * params.GetBytesPerFrame(kSampleFormat);
     data = buffer;
-    while (todo > 0) {
-      n = read(fd, data, todo);
-      if (n == 0)
-        return;	// unrecoverable I/O error
-      todo -= n;
-      data += n;
+    move = 0;
+    while (count > 0) {
+      bytes = count * framesize;
+      if ((n = read(fd, data + move, bytes)) < 0) {
+        LOG(ERROR) << "[AUDIOIO] Input:ThreadLoop(): read error.";
+        break;
+      }
+      frames = n / framesize;
+      move += n;
+      read_bytes += n;
+      count -= frames;
     }
-    pthread_mutex_lock(&mutex);
-    hw_delay -= nframes;
-    pthread_mutex_unlock(&mutex);
 
+    // Update hardware pointer
+    if (ioctl(fd, AUDIO_GETOOFFS, &offset) < 0) {
+        LOG(ERROR) << "[AUDIOIO] Intput:ThreadLoop(): Failed to get transfered bytes.";
+        break;
+    } else {
+      hw_delay = (read_bytes - offset.samples) / framesize;
+    }
     // convert frames count to TimeDelta
     const base::TimeDelta delay = AudioTimestampHelper::FramesToTime(hw_delay, params.sample_rate());
 
     // push into bus
-    audio_bus->FromInterleaved<SignedInt16SampleTypeTraits>(reinterpret_cast<int16_t*>(buffer), nframes);
+    audio_bus->FromInterleaved<SignedInt16SampleTypeTraits>(reinterpret_cast<int16_t*>(buffer), count);
 
     // invoke callback
     callback->OnData(audio_bus.get(), base::TimeTicks::Now() - delay, 1., {});
   }
   LOG(INFO) << "[AUDIOIO] Input:ThreadLoop() stopped.";
-}
-
-void AudioIOAudioInputStream::ThreadLoopPos(void) {
-  int ret;
-  struct audio_offset offset;
-  struct pollfd pfd;
-  pfd.fd = fd;
-  pfd.events = POLLIN;
-
-  LOG(INFO) << "[AUDIOIO] Input:ThreadLoopPos() started.";
-
-  while (state == kRunning) {
-    ret = poll(&pfd, 1, -1);
-    if (ret > 0 && (pfd.revents & POLLIN)) {
-      if (ioctl(fd, AUDIO_GETIOFFS, &offset) < 0) {
-        LOG(ERROR) << "[AUDIOIO] Input:ThreadLoopPos: Failed to get transfered blocks.";
-      }
-      pthread_mutex_lock(&mutex);
-      hw_delay += offset.deltablks;
-      pthread_mutex_unlock(&mutex);
-    } else {
-      LOG(ERROR) << "[AUDIOIO] Input:ThreadLoopPos: poll error.";
-    }
-  }
-  LOG(INFO) << "[AUDIOIO] Input:ThreadLoopPos() stopped.";
 }
 
 }  // namespace media
