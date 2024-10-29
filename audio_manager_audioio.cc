@@ -65,7 +65,7 @@ AudioManagerAudioIO::AudioManagerAudioIO(std::unique_ptr<AudioThread> audio_thre
                                          AudioLogFactory* audio_log_factory)
     : AudioManagerBase(std::move(audio_thread),
                        audio_log_factory) {
-  LOG(WARNING) << "[AUDIOIO] AudioManagerAudioIO";
+  LOG(INFO) << "[AUDIOIO] AudioManagerAudioIO";
   SetMaxOutputStreamsAllowed(kMaxOutputStreams);
 }
 
@@ -130,21 +130,21 @@ AudioParameters AudioManagerAudioIO::GetPreferredOutputStreamParameters(
 
 AudioInputStream* AudioManagerAudioIO::MakeInputStream(
     const AudioParameters& params) {
-  LOG(WARNING) << "[AUDIOIO] MakeInputStream";
+  LOG(INFO) << "[AUDIOIO] MakeInputStream";
   return new AudioIOAudioInputStream(this,
              AudioDeviceDescription::kDefaultDeviceId, params);
 }
 
 AudioOutputStream* AudioManagerAudioIO::MakeOutputStream(
     const AudioParameters& params) {
-  LOG(WARNING) << "[AUDIOIO] MakeOutputStream";
+  LOG(INFO) << "[AUDIOIO] MakeOutputStream";
   return new AudioIOAudioOutputStream(params, this);
 }
 
 std::unique_ptr<media::AudioManager> CreateAudioManager(
     std::unique_ptr<AudioThread> audio_thread,
     AudioLogFactory* audio_log_factory) {
-  LOG(WARNING) << "[AUDIOIO] CreateAudioManager";
+  LOG(INFO) << "[AUDIOIO] CreateAudioManager";
 
   // For testing allow audio output to be disabled.
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableAudioOutput)) {
