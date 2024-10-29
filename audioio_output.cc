@@ -41,7 +41,7 @@ bool AudioIOAudioOutputStream::Open() {
 
   if (params.format() != AudioParameters::AUDIO_PCM_LINEAR &&
       params.format() != AudioParameters::AUDIO_PCM_LOW_LATENCY) {
-    LOG(WARNING) << "[AUDIOIO] Unsupported audio format.";
+    LOG(WARNING) << "[AUDIOIO] Output: Unsupported audio format.";
     return false;
   }
 
@@ -54,7 +54,7 @@ bool AudioIOAudioOutputStream::Open() {
   info.play.pause = true;
 
   if ((fd = open("/dev/audio", O_WRONLY)) < 0) {
-    LOG(ERROR) << "[AUDIOIO] Couldn't open audio device.";
+    LOG(ERROR) << "[AUDIOIO] Output: Couldn't open audio device.";
     return false;
   }
 
@@ -75,7 +75,7 @@ bool AudioIOAudioOutputStream::Open() {
 
 error:
   close(fd);
-  LOG(ERROR) << "[AUDIOIO] Couldn't set audio parameters.";
+  LOG(ERROR) << "[AUDIOIO] Output: Couldn't set audio parameters.";
   return false;
 }
 
@@ -196,19 +196,19 @@ void AudioIOAudioOutputStream::ThreadLoop(void) {
 
   while (state == kRunning) {
     // Update volume if needed
+    pthread_mutex_lock(&mutex);
     if (volpending) {
-      pthread_mutex_lock(&mutex);
       volpending = 0;
       if (ioctl(fd, AUDIO_GETINFO, &info) < 0) {
-        LOG(ERROR) << "[AUDIOIO] Failed to get audio info.";
+        LOG(ERROR) << "[AUDIOIO] Output:ThreadLoop(): Failed to get audio info.";
       } else {
         info.play.gain = vol;
         if (ioctl(fd, AUDIO_SETINFO, &info) < 0 ) {
-          LOG(ERROR) << "[AUDIOIO] Failed to set audio volume.";
+          LOG(ERROR) << "[AUDIOIO] Output:ThreadLoop(): Failed to set audio volume.";
         }
       }
-      pthread_mutex_unlock(&mutex);
     }
+    pthread_mutex_unlock(&mutex);
 
     // Get data to play
     const base::TimeDelta delay = AudioTimestampHelper::FramesToTime(hw_delay, params.sample_rate());
@@ -218,7 +218,7 @@ void AudioIOAudioOutputStream::ThreadLoop(void) {
       // We have to submit something to the device
       count = audio_bus->frames();
       memset(buffer, 0, count * framesize);
-      LOG(WARNING) << "[AUDIOIO] No data to play, running empty cycle.";
+      LOG(WARNING) << "[AUDIOIO] Output:ThreadLoop(): No data to play, running empty cycle.";
     }
 
     // Submit data to the device
@@ -229,7 +229,7 @@ void AudioIOAudioOutputStream::ThreadLoop(void) {
         if (errno == EINTR) {
           continue;
         }
-        LOG(ERROR) << "[AUDIOIO] write error.";
+        LOG(ERROR) << "[AUDIOIO] Output:ThreadLoop(): write error.";
         break;
       }
       frames = ret / framesize;
@@ -240,7 +240,7 @@ void AudioIOAudioOutputStream::ThreadLoop(void) {
 
     // Update hardware pointer
     if (ioctl(fd, AUDIO_GETOOFFS, &offset) < 0) {
-        LOG(ERROR) << "[AUDIOIO] Output:ThreadLoop: Failed to get transfered bytes.";
+        LOG(ERROR) << "[AUDIOIO] Output:ThreadLoop(): Failed to get transfered bytes.";
         break;
     } else {
       hw_delay = (written_bytes - offset.samples) / framesize;
