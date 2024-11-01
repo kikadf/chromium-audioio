@@ -24,8 +24,7 @@ AudioIOAudioInputStream::AudioIOAudioInputStream(AudioManagerBase* manager,
     : manager(manager),
       params(params),
       audio_bus(AudioBus::Create(params)),
-      state(kClosed),
-      mutex(PTHREAD_MUTEX_INITIALIZER) {
+      state(kClosed) {
 }
 
 AudioIOAudioInputStream::~AudioIOAudioInputStream() {
@@ -220,7 +219,7 @@ void AudioIOAudioInputStream::ThreadLoop(void) {
     }
 
     // Update hardware pointer
-    if (ioctl(fd, AUDIO_GETOOFFS, &offset) < 0) {
+    if (ioctl(fd, AUDIO_GETIOFFS, &offset) < 0) {
         LOG(ERROR) << "[AUDIOIO] Intput:ThreadLoop(): Failed to get transfered bytes.";
         break;
     } else {
