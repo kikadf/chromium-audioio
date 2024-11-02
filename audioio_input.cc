@@ -24,7 +24,8 @@ AudioIOAudioInputStream::AudioIOAudioInputStream(AudioManagerBase* manager,
     : manager(manager),
       params(params),
       audio_bus(AudioBus::Create(params)),
-      state(kClosed) {
+      state(kClosed),
+      mutex(PTHREAD_MUTEX_INITIALIZER) {
 }
 
 AudioIOAudioInputStream::~AudioIOAudioInputStream() {
@@ -69,6 +70,8 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   }
 
   state = kStopped;
+  inputvol = 1.0;
+  vol = AUDIO_MAX_GAIN;
   buffer = new char[audio_bus->frames() * params.GetBytesPerFrame(kSampleFormat)];
   LOG(INFO) << "[AUDIOIO] InputStream opened.";
   return OpenOutcome::kSuccess;
@@ -159,19 +162,32 @@ release:
 // Returns the maximum microphone analog volume or 0.0 if device does not
 // have volume control.
 double AudioIOAudioInputStream::GetMaxVolume() {
-  // Not supported
-  return 0.0;
+  return 1.0;
 }
 
 // Sets the microphone analog volume, with range [0, max_volume] inclusive.
 void AudioIOAudioInputStream::SetVolume(double volume) {
-  // Not supported. Do nothing.
+  struct audio_info info;
+
+  pthread_mutex_lock(&mutex);
+  vol = volume * AUDIO_MAX_GAIN;
+  inputvol = volume;
+  if (ioctl(fd, AUDIO_GETINFO, &info) < 0) {
+    LOG(ERROR) << "[AUDIOIO] Input:SetVolume(): Failed to get audio info.";
+  } else {
+    info.record.gain = vol;
+    if (ioctl(fd, AUDIO_SETINFO, &info) < 0 ) {
+      LOG(ERROR) << "[AUDIOIO] Input:SetVolume(): Failed to set audio volume.";
+    }
+  }
+  pthread_mutex_unlock(&mutex);
+
+  UpdateAgcVolume();
 }
 
 // Returns the microphone analog volume, with range [0, max_volume] inclusive.
 double AudioIOAudioInputStream::GetVolume() {
-  // Not supported.
-  return 0.0;
+  return inputvol;
 }
 
 // Returns the current muting state for the microphone.

@@ -75,6 +75,12 @@ class AudioIOAudioInputStream : public AgcAudioStream<AudioInputStream> {
   enum StreamState state;
   // High priority thread running ThreadLoop()
   pthread_t thread;
+  // Protects vol, inputvol
+  pthread_mutex_t mutex;
+  // Current volume in the AUDIO_MIN_GAIN..AUDIO_MAX_GAIN range
+  int vol;
+  // Current volume in the 0.0..1.0 range
+  double inputvol;
   // Temporary buffer
   char* buffer;
 };
