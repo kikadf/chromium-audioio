@@ -205,7 +205,7 @@ void AudioIOAudioInputStream::SetOutputDeviceForAec(
 }
 
 void AudioIOAudioInputStream::ThreadLoop(void) {
-  size_t bytes, n, frames, move, count;
+  size_t bytes, n, frames, nframes, move, count;
   size_t framesize = params.GetBytesPerFrame(kSampleFormat);
   size_t read_bytes = 0;
   size_t hw_delay = 0;
@@ -218,7 +218,7 @@ void AudioIOAudioInputStream::ThreadLoop(void) {
   while (state == kRunning) {
 
     GetAgcVolume(&normalized_volume);
-    count = audio_bus->frames();
+    nframes = count = audio_bus->frames();
 
     data = buffer;
     move = 0;
@@ -245,10 +245,10 @@ void AudioIOAudioInputStream::ThreadLoop(void) {
     const base::TimeDelta delay = AudioTimestampHelper::FramesToTime(hw_delay, params.sample_rate());
 
     // push into bus
-    audio_bus->FromInterleaved<SignedInt16SampleTypeTraits>(reinterpret_cast<int16_t*>(buffer), count);
+    audio_bus->FromInterleaved<SignedInt16SampleTypeTraits>(reinterpret_cast<int16_t*>(buffer), nframes);
 
     // invoke callback
-    callback->OnData(audio_bus.get(), base::TimeTicks::Now() - delay, 1., {});
+    callback->OnData(audio_bus.get(), base::TimeTicks::Now() - delay, normalized_volume, {});
   }
   LOG(INFO) << "[AUDIOIO] Input:ThreadLoop() stopped.";
 }
