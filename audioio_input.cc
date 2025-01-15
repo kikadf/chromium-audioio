@@ -23,6 +23,7 @@ AudioIOAudioInputStream::AudioIOAudioInputStream(AudioManagerBase* manager,
                                              const AudioParameters& params)
     : manager(manager),
       params(params),
+      device_name(device_name),
       audio_bus(AudioBus::Create(params)),
       state(kClosed),
       mutex(PTHREAD_MUTEX_INITIALIZER) {
@@ -37,6 +38,7 @@ AudioIOAudioInputStream::~AudioIOAudioInputStream() {
 // begin recording.
 AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   struct audio_info info;
+  std::string device;
 
   if (state != kClosed) {
     return OpenOutcome::kFailed;
@@ -48,6 +50,12 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
     return OpenOutcome::kFailed;
   }
 
+  if ((device_name.empty()) || (device_name == AudioDeviceDescription::kDefaultDeviceId)) {
+    device = "/dev/audio";
+  } else {
+    device = device_name;
+  }
+
   AUDIO_INITINFO(&info);
   info.mode = AUMODE_RECORD;
   info.record.sample_rate = params.sample_rate();
@@ -56,8 +64,8 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   info.record.encoding = AUDIO_ENCODING_SLINEAR_LE;
   info.record.pause = true;
 
-  if ((fd = open("/dev/audio", O_RDONLY)) < 0) {
-    LOG(ERROR) << "[AUDIOIO] Input: Couldn't open audio device.";
+  if ((fd = open(device.c_str(), O_RDONLY)) < 0) {
+    LOG(ERROR) << "[AUDIOIO] Input: Couldn't open audio device: " << device;
     return OpenOutcome::kFailed;
   }
 
@@ -73,7 +81,7 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   inputvol = 1.0;
   vol = AUDIO_MAX_GAIN;
   buffer = new char[audio_bus->frames() * params.GetBytesPerFrame(kSampleFormat)];
-  LOG(INFO) << "[AUDIOIO] InputStream opened.";
+  LOG(INFO) << "[AUDIOIO] InputStream opened: " << device;
   return OpenOutcome::kSuccess;
 error:
   close(fd);

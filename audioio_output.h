@@ -16,7 +16,8 @@ class AudioManagerBase;
 class AudioIOAudioOutputStream : public AudioOutputStream {
  public:
   // The manager is creating this object
-  AudioIOAudioOutputStream(const AudioParameters& params,
+  AudioIOAudioOutputStream(const std::string& device_name,
+                         const AudioParameters& params,
                          AudioManagerBase* manager);
 
   AudioIOAudioOutputStream(const AudioIOAudioOutputStream&) = delete;
@@ -50,6 +51,8 @@ class AudioIOAudioOutputStream : public AudioOutputStream {
   AudioManagerBase* manager;
   // Parameters of the source
   AudioParameters params;
+  // Device file name of the audio device
+  const std::string device_name;
   // Source stores data here
   std::unique_ptr<AudioBus> audio_bus;
   // Call-back that produces data to play

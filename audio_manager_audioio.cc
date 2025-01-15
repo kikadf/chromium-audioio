@@ -1,3 +1,6 @@
+#include <fcntl.h>
+#include <sys/ioctl.h>
+
 #include "base/command_line.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/memory/ptr_util.h"
@@ -20,28 +23,88 @@ static const int kMaxOutputStreams = 50;
 // Default sample rate for input and output streams.
 static const int kDefaultSampleRate = 48000;
 
-void AddDefaultDevice(AudioDeviceNames* device_names) {
-  DCHECK(device_names->empty());
-  device_names->push_front(AudioDeviceName::CreateDefault());
-}
-
 bool AudioManagerAudioIO::HasAudioOutputDevices() {
-  return true;
+  AudioDeviceNames devices;
+  GetAudioOutputDeviceNames(&devices);
+  if (devices.empty()) {
+    LOG(WARNING) << "[AUDIOIO] No audio output devices found.";
+  }
+  return !devices.empty();
 }
 
 bool AudioManagerAudioIO::HasAudioInputDevices() {
-  return true;
+  AudioDeviceNames devices;
+  GetAudioInputDeviceNames(&devices);
+  if (devices.empty()) {
+    LOG(WARNING) << "[AUDIOIO] No audio input devices found.";
+  }
+  return !devices.empty();
 }
 
 void AudioManagerAudioIO::GetAudioInputDeviceNames(
     AudioDeviceNames* device_names) {
-  DCHECK(device_names->empty());
-  AddDefaultDevice(device_names);
+  GetAudioDevices(INPUT);
+  *device_names = *input_devices;
 }
 
 void AudioManagerAudioIO::GetAudioOutputDeviceNames(
     AudioDeviceNames* device_names) {
-  AddDefaultDevice(device_names);
+  GetAudioDevices(OUTPUT);
+  *device_names = *output_devices;
+}
+
+void AudioManagerAudioIO::GetAudioDevices(int type) {
+  char dev[16];
+  int fd;
+  int hwprops;
+  struct audio_device hwname;
+  struct audio_info info;
+
+  if (type == INPUT) {
+    if (!input_devices) {
+      input_devices = new AudioDeviceNames();
+    } else {
+      return;
+    }
+  } else {
+    if (!output_devices) {
+      output_devices = new AudioDeviceNames();
+    } else {
+      return;
+    }
+  }
+
+  for (int i=0; i < 4; i++) {
+    (void)snprintf(dev, sizeof(dev), "/dev/audio%u", i);
+    if ((fd = open(dev, O_RDONLY)) < 0) {
+      continue;
+    }
+    if ((ioctl(fd, AUDIO_GETPROPS, &hwprops) == 0) &&
+        (ioctl(fd, AUDIO_GETDEV, &hwname) == 0)) {
+      if (type == INPUT) {
+        if ((hwprops & AUDIO_PROP_CAPTURE) != 0) {
+          LOG(INFO) << "[AUDIOIO] Found input device: " << hwname.name << ", " << dev;
+          input_devices->push_back(AudioDeviceName(hwname.name, dev));
+        } else if ((ioctl(fd, AUDIO_GETINFO, &info) == 0) && (info.mode == AUMODE_RECORD)) {
+          LOG(INFO) << "[AUDIOIO] Found input device: " << hwname.name << ", " << dev;
+          input_devices->push_back(AudioDeviceName(hwname.name, dev));
+        }
+      }
+      if ((type == OUTPUT) && ((hwprops & AUDIO_PROP_PLAYBACK) != 0)) {
+        LOG(INFO) << "[AUDIOIO] Found output device: " << hwname.name << ", " << dev;
+        output_devices->push_back(AudioDeviceName(hwname.name, dev));
+      }
+    }
+    close(fd);
+  }
+
+  // Prepend the default device if the list is not empty.
+  if ((type == INPUT) && (!input_devices->empty())) {
+    input_devices->push_front(AudioDeviceName::CreateDefault());
+  }
+  if ((type == OUTPUT) && (!output_devices->empty())) {
+    output_devices->push_front(AudioDeviceName::CreateDefault());
+  }
 }
 
 const char* AudioManagerAudioIO::GetName() {
@@ -75,7 +138,7 @@ AudioOutputStream* AudioManagerAudioIO::MakeLinearOutputStream(
     const AudioParameters& params,
     const LogCallback& log_callback) {
   DCHECK_EQ(AudioParameters::AUDIO_PCM_LINEAR, params.format());
-  return MakeOutputStream(params);
+  return MakeOutputStream(AudioDeviceDescription::kDefaultDeviceId, params);
 }
 
 AudioOutputStream* AudioManagerAudioIO::MakeLowLatencyOutputStream(
@@ -84,7 +147,7 @@ AudioOutputStream* AudioManagerAudioIO::MakeLowLatencyOutputStream(
     const LogCallback& log_callback) {
   LOG_IF(ERROR, !device_id.empty()) << "[AUDIOIO] MakeLowLatencyOutputStream: Not implemented!";
   DCHECK_EQ(AudioParameters::AUDIO_PCM_LOW_LATENCY, params.format());
-  return MakeOutputStream(params);
+  return MakeOutputStream(device_id, params);
 }
 
 AudioInputStream* AudioManagerAudioIO::MakeLinearInputStream(
@@ -92,7 +155,7 @@ AudioInputStream* AudioManagerAudioIO::MakeLinearInputStream(
     const std::string& device_id,
     const LogCallback& log_callback) {
   DCHECK_EQ(AudioParameters::AUDIO_PCM_LINEAR, params.format());
-  return MakeInputStream(params);
+  return MakeInputStream(device_id, params);
 }
 
 AudioInputStream* AudioManagerAudioIO::MakeLowLatencyInputStream(
@@ -100,14 +163,13 @@ AudioInputStream* AudioManagerAudioIO::MakeLowLatencyInputStream(
     const std::string& device_id,
     const LogCallback& log_callback) {
   DCHECK_EQ(AudioParameters::AUDIO_PCM_LOW_LATENCY, params.format());
-  return MakeInputStream(params);
+  return MakeInputStream(device_id, params);
 }
 
 AudioParameters AudioManagerAudioIO::GetPreferredOutputStreamParameters(
     const std::string& output_device_id,
     const AudioParameters& input_params) {
-  // TODO(tommi): Support |output_device_id|.
-  LOG_IF(ERROR, !output_device_id.empty()) << "[AUDIOIO] GetPreferredOutputStreamParameters: Not implemented!";
+  LOG_IF(ERROR, !output_device_id.empty()) << "[AUDIOIO] GetPreferredOutputStreamParameters: output_device_id is empty!";
   static const int kDefaultOutputBufferSize = 2048;
 
   ChannelLayoutConfig channel_layout_config = ChannelLayoutConfig::Stereo();
@@ -129,16 +191,17 @@ AudioParameters AudioManagerAudioIO::GetPreferredOutputStreamParameters(
 }
 
 AudioInputStream* AudioManagerAudioIO::MakeInputStream(
+    const std::string& device_id,
     const AudioParameters& params) {
   LOG(INFO) << "[AUDIOIO] MakeInputStream";
-  return new AudioIOAudioInputStream(this,
-             AudioDeviceDescription::kDefaultDeviceId, params);
+  return new AudioIOAudioInputStream(this, device_id, params);
 }
 
 AudioOutputStream* AudioManagerAudioIO::MakeOutputStream(
+    const std::string& device_id,
     const AudioParameters& params) {
   LOG(INFO) << "[AUDIOIO] MakeOutputStream";
-  return new AudioIOAudioOutputStream(params, this);
+  return new AudioIOAudioOutputStream(device_id, params, this);
 }
 
 std::unique_ptr<media::AudioManager> CreateAudioManager(

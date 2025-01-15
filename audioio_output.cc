@@ -19,11 +19,13 @@ void *AudioIOAudioOutputStream::ThreadEntry(void *arg) {
   return NULL;
 }
 
-AudioIOAudioOutputStream::AudioIOAudioOutputStream(const AudioParameters& params,
+AudioIOAudioOutputStream::AudioIOAudioOutputStream(const std::string& device_name,
+                                               const AudioParameters& params,
                                                AudioManagerBase* manager)
     : manager(manager),
       params(params),
       audio_bus(AudioBus::Create(params)),
+      device_name(device_name),
       state(kClosed),
       mutex(PTHREAD_MUTEX_INITIALIZER) {
 }
@@ -38,11 +40,18 @@ AudioIOAudioOutputStream::~AudioIOAudioOutputStream() {
 // must always be followed by a call to Close() even if Open() fails
 bool AudioIOAudioOutputStream::Open() {
   struct audio_info info;
+  std::string device;
 
   if (params.format() != AudioParameters::AUDIO_PCM_LINEAR &&
       params.format() != AudioParameters::AUDIO_PCM_LOW_LATENCY) {
     LOG(WARNING) << "[AUDIOIO] Output: Unsupported audio format.";
     return false;
+  }
+
+  if ((device_name.empty()) || (device_name == AudioDeviceDescription::kDefaultDeviceId)) {
+    device = "/dev/audio";
+  } else {
+    device = device_name;
   }
 
   AUDIO_INITINFO(&info);
@@ -53,8 +62,8 @@ bool AudioIOAudioOutputStream::Open() {
   info.play.encoding = AUDIO_ENCODING_SLINEAR_LE;
   info.play.pause = true;
 
-  if ((fd = open("/dev/audio", O_WRONLY)) < 0) {
-    LOG(ERROR) << "[AUDIOIO] Output: Couldn't open audio device.";
+  if ((fd = open(device.c_str(), O_WRONLY)) < 0) {
+    LOG(ERROR) << "[AUDIOIO] Output: Couldn't open audio device: " << device;
     return false;
   }
 
@@ -70,7 +79,7 @@ bool AudioIOAudioOutputStream::Open() {
   volpending = 0;
   vol = AUDIO_MAX_GAIN;
   buffer = new char[audio_bus->frames() * params.GetBytesPerFrame(kSampleFormat)];
-  LOG(INFO) << "[AUDIOIO] OutputStream opened.";
+  LOG(INFO) << "[AUDIOIO] OutputStream opened: " << device;
   return true;
 
 error:

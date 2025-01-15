@@ -65,6 +65,8 @@ class AudioIOAudioInputStream : public AgcAudioStream<AudioInputStream> {
   AudioManagerBase* manager;
   // Parameters of the source
   AudioParameters params;
+  // Device file name of the audio device
+  const std::string device_name;
   // We store data here for consumer
   std::unique_ptr<AudioBus> audio_bus;
   // Call-back that consumes recorded data

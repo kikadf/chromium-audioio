@@ -5,8 +5,12 @@
 
 #include "base/compiler_specific.h"
 #include "base/memory/ref_counted.h"
+#include "base/memory/raw_ptr.h"
 #include "base/threading/thread.h"
 #include "media/audio/audio_manager_base.h"
+
+#define INPUT   0
+#define OUTPUT  1
 
 namespace media {
 
@@ -78,8 +82,12 @@ class MEDIA_EXPORT AudioManagerAudioIO : public AudioManagerBase {
 
  private:
   // Called by MakeLinearOutputStream and MakeLowLatencyOutputStream.
-  AudioOutputStream* MakeOutputStream(const AudioParameters& params);
-  AudioInputStream* MakeInputStream(const AudioParameters& params);
+  AudioOutputStream* MakeOutputStream(const std::string& device_id, const AudioParameters& params);
+  AudioInputStream* MakeInputStream(const std::string& device_id, const AudioParameters& params);
+  void GetAudioDevices(int type);
+
+  raw_ptr<AudioDeviceNames> output_devices;
+  raw_ptr<AudioDeviceNames> input_devices;
 };
 
 }  // namespace media
