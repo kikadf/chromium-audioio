@@ -9,7 +9,7 @@
 
 namespace media {
 
-static const SampleFormat kSampleFormat = kSampleFormatS16;
+static const SampleFormat kSampleFormatAIOi = kSampleFormatS16;
 
 void *AudioIOAudioInputStream::ThreadEntry(void *arg) {
   AudioIOAudioInputStream* self = static_cast<AudioIOAudioInputStream*>(arg);
@@ -60,7 +60,7 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   info.mode = AUMODE_RECORD;
   info.record.sample_rate = params.sample_rate();
   info.record.channels = params.channels();
-  info.record.precision = SampleFormatToBitsPerChannel(kSampleFormat);
+  info.record.precision = SampleFormatToBitsPerChannel(kSampleFormatAIOi);
   info.record.encoding = AUDIO_ENCODING_SLINEAR_LE;
   info.record.pause = true;
 
@@ -80,7 +80,7 @@ AudioInputStream::OpenOutcome AudioIOAudioInputStream::Open() {
   state = kStopped;
   inputvol = 1.0;
   vol = AUDIO_MAX_GAIN;
-  buffer = new char[audio_bus->frames() * params.GetBytesPerFrame(kSampleFormat)];
+  buffer = new char[audio_bus->frames() * params.GetBytesPerFrame(kSampleFormatAIOi)];
   LOG(INFO) << "[AUDIOIO] InputStream opened: " << device;
   return OpenOutcome::kSuccess;
 error:
@@ -214,7 +214,7 @@ void AudioIOAudioInputStream::SetOutputDeviceForAec(
 
 void AudioIOAudioInputStream::ThreadLoop(void) {
   size_t bytes, n, frames, nframes, move, count;
-  size_t framesize = params.GetBytesPerFrame(kSampleFormat);
+  size_t framesize = params.GetBytesPerFrame(kSampleFormatAIOi);
   size_t read_bytes = 0;
   size_t hw_delay = 0;
   double normalized_volume = 0.0;

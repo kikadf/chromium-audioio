@@ -18,7 +18,7 @@
 namespace media {
 
 // Maximum number of output streams that can be open simultaneously.
-static const int kMaxOutputStreams = 50;
+static const int kMaxOutputStreamsAIO = 50;
 
 // Default sample rate for input and output streams.
 static const int kDefaultSampleRate = 48000;
@@ -129,7 +129,7 @@ AudioManagerAudioIO::AudioManagerAudioIO(std::unique_ptr<AudioThread> audio_thre
     : AudioManagerBase(std::move(audio_thread),
                        audio_log_factory) {
   LOG(INFO) << "[AUDIOIO] AudioManagerAudioIO";
-  SetMaxOutputStreamsAllowed(kMaxOutputStreams);
+  SetMaxOutputStreamsAllowed(kMaxOutputStreamsAIO);
 }
 
 AudioManagerAudioIO::~AudioManagerAudioIO() = default;

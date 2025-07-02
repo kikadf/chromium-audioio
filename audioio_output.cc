@@ -10,7 +10,7 @@
 
 namespace media {
 
-static const SampleFormat kSampleFormat = kSampleFormatS16;
+static const SampleFormat kSampleFormatAIOo = kSampleFormatS16;
 
 void *AudioIOAudioOutputStream::ThreadEntry(void *arg) {
   AudioIOAudioOutputStream* self = static_cast<AudioIOAudioOutputStream*>(arg);
@@ -58,7 +58,7 @@ bool AudioIOAudioOutputStream::Open() {
   info.mode = AUMODE_PLAY;
   info.play.sample_rate = params.sample_rate();
   info.play.channels = params.channels();
-  info.play.precision = SampleFormatToBitsPerChannel(kSampleFormat);
+  info.play.precision = SampleFormatToBitsPerChannel(kSampleFormatAIOo);
   info.play.encoding = AUDIO_ENCODING_SLINEAR_LE;
   info.play.pause = true;
 
@@ -78,7 +78,7 @@ bool AudioIOAudioOutputStream::Open() {
   state = kStopped;
   volpending = 0;
   vol = AUDIO_MAX_GAIN;
-  buffer = new char[audio_bus->frames() * params.GetBytesPerFrame(kSampleFormat)];
+  buffer = new char[audio_bus->frames() * params.GetBytesPerFrame(kSampleFormatAIOo)];
   LOG(INFO) << "[AUDIOIO] OutputStream opened: " << device;
   return true;
 
@@ -196,7 +196,7 @@ void AudioIOAudioOutputStream::Flush() {}
 void AudioIOAudioOutputStream::ThreadLoop(void) {
   int avail, count, ret, frames, move;
   int written_bytes = 0;
-  int framesize = params.GetBytesPerFrame(kSampleFormat);
+  int framesize = params.GetBytesPerFrame(kSampleFormatAIOo);
   int hw_delay = 0;
   struct audio_info info;
   struct audio_offset offset;
