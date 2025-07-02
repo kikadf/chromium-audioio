@@ -43,7 +43,7 @@ class MEDIA_EXPORT AudioManagerAudioIO : public AudioManagerBase {
   // version of this interface.
   AudioParameters GetInputStreamParameters(const std::string& device_id) override;
   // Gets the name of the audio manager (e.g., Windows, Mac, PulseAudio).
-  const char* GetName() override;
+  const std::string_view GetName() override;
 
   // Implementation of AudioManagerBase.
   // Creates the output stream for the |AUDIO_PCM_LINEAR| format. The legacy

@@ -107,7 +107,7 @@ void AudioManagerAudioIO::GetAudioDevices(int type) {
   }
 }
 
-const char* AudioManagerAudioIO::GetName() {
+const std::string_view AudioManagerAudioIO::GetName() {
   return "AudioIO";
 }
 
