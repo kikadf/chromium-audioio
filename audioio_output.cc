@@ -24,8 +24,8 @@ AudioIOAudioOutputStream::AudioIOAudioOutputStream(const std::string& device_nam
                                                AudioManagerBase* manager)
     : manager(manager),
       params(params),
-      audio_bus(AudioBus::Create(params)),
       device_name(device_name),
+      audio_bus(AudioBus::Create(params)),
       state(kClosed),
       mutex(PTHREAD_MUTEX_INITIALIZER) {
 }
